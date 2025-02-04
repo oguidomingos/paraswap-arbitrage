@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { simulateFlashLoanTransaction } from './web3-utils';
 import { ArrowRightCircle, TrendingUp, RefreshCcw, DollarSign, Zap, Cast as Gas, Repeat } from 'lucide-react';
 
 interface Step {
@@ -19,6 +20,13 @@ interface Opportunity {
   profitPercentage: number;
 }
 
+interface SimulationResult {
+  sucesso: boolean;
+  lucro?: number;
+  tempoExecucao: number;
+  erro?: string;
+}
+
 function App() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
@@ -31,7 +39,7 @@ function App() {
         const data = await response.json();
         setOpportunities(data);
         setLastUpdate(new Date());
-        
+
         const total = data.reduce((acc: number, curr: Opportunity) => acc + curr.profit, 0);
         setTotalProfit(total);
       } catch (error) {
@@ -44,6 +52,8 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+
+      <button onClick={simulateFlashLoanTransaction}>Simulate Flash Loan</button>
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white p-8">
       {/* Header */}

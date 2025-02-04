@@ -43,6 +43,64 @@ const TOKENS = {
 };
 
 // ###########################################################
+// LÓGICA DE SIMULAÇÃO DE FLASH LOAN INTEGRADA
+// ###########################################################
+
+// Configurações de simulação (movido para server.js)
+const CONFIG_SIMULACAO = {
+  taxas: {
+    gas: 0.15,       // Taxa de gás (%)
+    flashLoan: 0.09  // Taxa do empréstimo relâmpago (%)
+  },
+  valorEmprestimo: 1000000 // Valor do flash loan em USD
+};
+
+// Variável para armazenar o resultado da última simulação
+let lastSimulationResult = null;
+
+// Função para simular a arbitragem (movido e renomeado de iniciarSimulacao)
+async function simularArbitragem(precoUSDCparaWMATIC, precoWMATICparaUSDC) {
+  const inicio = Date.now();
+
+  try {
+    const resultado = await Promise.race([
+      new Promise(resolve => {
+        // Simulação de operação de arbitragem usando preços reais
+        const custoGas = (CONFIG_SIMULACAO.valorEmprestimo * CONFIG_SIMULACAO.taxas.gas) / 100;
+        const custoTotal = custoGas + (CONFIG_SIMULACAO.valorEmprestimo * CONFIG_SIMULACAO.taxas.flashLoan) / 100;
+
+        // Simulação de arbitragem: USDC -> WMATIC -> USDC
+        // Calcula o lucro potencial com base nos preços reais
+        const lucroPotencial = (CONFIG_SIMULACAO.valorEmprestimo / precoUSDCparaWMATIC) * precoWMATICparaUSDC - CONFIG_SIMULACAO.valorEmprestimo - custoTotal;
+
+
+        resolve({
+          sucesso: lucroPotencial > 0,
+          lucro: lucroPotencial,
+          tempoExecucao: Date.now() - inicio
+        });
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Tempo excedido')), 3000)
+      )
+    ]);
+
+    // Atualiza a variável com o resultado da simulação
+    lastSimulationResult = resultado;
+    return resultado;
+
+  } catch (erro) {
+    lastSimulationResult = { // Garante que lastSimulationResult seja atualizado mesmo em caso de erro
+      sucesso: false,
+      erro: erro.message,
+      tempoExecucao: Date.now() - inicio
+    };
+    return lastSimulationResult;
+  }
+}
+
+
+// ###########################################################
 // LÓGICA DE ARBITRAGEM
 // ###########################################################
 
@@ -51,15 +109,15 @@ let opportunityLog = [];
 
 // Função para registrar e exibir as oportunidades encontradas
 function recordOpportunity(route, profit, steps, gasFee, flashLoanAmount, totalMovimentado, profitPercentage) {
-  opportunityLog.push({ 
-    route, 
-    profit, 
-    steps, 
-    gasFee, 
-    flashLoanAmount, 
-    totalMovimentado, 
+  opportunityLog.push({
+    route,
+    profit,
+    steps,
+    gasFee,
+    flashLoanAmount,
+    totalMovimentado,
     profitPercentage,
-    timestamp: Date.now() 
+    timestamp: Date.now()
   });
   console.log("Oportunidades registradas:", opportunityLog);
 }
@@ -72,7 +130,7 @@ const provider = new ethers.JsonRpcProvider(POLYGON_RPC);
 // Cache de preços para evitar requisições duplicadas
 let priceCache = {};
 // Variável para controlar o tempo da última requisição
-let lastRequestTime = 0; 
+let lastRequestTime = 0;
 
 // Função para buscar o melhor preço entre tokens utilizando a API do Paraswap
 async function getBestPrice(srcToken, destToken, amount) {
@@ -204,6 +262,18 @@ async function checkArbitrage() {
     console.log(`🔄 Total movimentado (valor base): ${bestMovimentacao.toFixed(6)} USDC`);
     console.log(`🚀 Lucro final estimado (escalado): ${scaledProfit.toFixed(6)} USDC`);
 
+    // Chamando a função de simulação de flash loan
+    const simulacaoResultado = await simularArbitragem(bestStep1.amount, bestStep2.amount);
+
+    console.log("\n📊 Resultados da Simulação de Flash Loan:");
+    console.log("-------------------------------");
+    console.log(`Status da Simulação: ${simulacaoResultado.sucesso ? '✅ Lucrativo' : '❌ Não lucrativo'}`);
+    if (simulacaoResultado.lucro) console.log(`Lucro Estimado na Simulação: $${simulacaoResultado.lucro.toFixed(2)}`);
+    console.log(`Tempo de Execução da Simulação: ${simulacaoResultado.tempoExecucao}ms`);
+    if (simulacaoResultado.erro) console.log(`Erro na Simulação: ${simulacaoResultado.erro}`);
+    console.log("\n⚠️ Atenção: Esta é uma simulação com preços REAIS do servidor backend");
+
+
     recordOpportunity(
       bestRoute.join(" → "),
       scaledProfit,
@@ -261,7 +331,33 @@ app.use((req, res, next) => {
 // Permite que o Express sirva arquivos estáticos da pasta "public"
 app.use(express.static(join(__dirname, "public")));
 
-// Rota para obter as oportunidades registradas (endpoint da API)
+// Rota para obter preços dos tokens em tempo real
+app.get("/api/prices", async (req, res) => {
+  try {
+    const priceUSDCtoWMATIC = await getBestPrice("USDC", "WMATIC", TRADE_AMOUNT);
+    const priceWMATICToUSDC = await getBestPrice("WMATIC", "USDC", TRADE_AMOUNT);
+
+    if (!priceUSDCtoWMATIC || !priceWMATICToUSDC) {
+      return res.status(500).json({ error: "Falha ao buscar preços dos tokens." });
+    }
+
+    res.json({
+      USDCtoWMATIC: priceUSDCtoWMATIC.amount,
+      WMATICToUSDC: priceWMATICToUSDC.amount,
+    });
+  } catch (error) {
+    console.error("Erro ao buscar preços:", error);
+    res.status(500).json({ error: "Erro interno ao buscar preços." });
+  }
+});
+
+// Rota para enviar resultados da simulação para o frontend
+app.get("/api/simulation_result", (req, res) => {
+  // Retorna o último resultado da simulação em JSON
+  res.json(lastSimulationResult);
+});
+
+
 app.get("/api/opportunities", (req, res) => {
   res.json(opportunityLog);
 });
