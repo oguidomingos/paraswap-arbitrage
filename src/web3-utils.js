@@ -1,23 +1,12 @@
 import { ethers } from 'ethers';
 
 async function connectWallet() {
-  if (!window.ethereum) {
-    console.error("MetaMask não está instalada. Instale para continuar.");
-    return null;
-  }
-
   try {
-    await window.ethereum.request({ method: "eth_requestAccounts" });
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    // Em ambiente de testes do Hardhat, usamos o provider interno:
+    const provider = ethers.provider;
     const signer = provider.getSigner();
     const network = await provider.getNetwork();
     console.log("Rede conectada:", network);
-
-    // Verifica se está conectado à rede Sepolia (chainId: 11155111)
-    if (network.chainId !== 11155111) {
-      console.warn("Você não está conectado à rede de testes Sepolia.");
-    }
-
     return { provider, signer };
   } catch (error) {
     console.error("Erro ao conectar à carteira:", error);

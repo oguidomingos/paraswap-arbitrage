@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { simulateFlashLoanTransaction } from './web3-utils';
+import { simulateFlashLoanTransaction, testSepoliaTransaction } from './web3-utils';
 import { ArrowRightCircle, TrendingUp, RefreshCcw, DollarSign, Zap, Cast as Gas, Repeat } from 'lucide-react';
 
 interface Step {
@@ -27,10 +27,19 @@ interface SimulationResult {
   erro?: string;
 }
 
+interface TransactionSimulationLog {
+  timestamp: number;
+  result: string;
+  gasUsed: string;
+  cost: string;
+  details: string;
+}
+
 function App() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [totalProfit, setTotalProfit] = useState<number>(0);
+  const [simulationLogs, setSimulationLogs] = useState<TransactionSimulationLog[]>([]);
 
   useEffect(() => {
     const fetchOpportunities = async () => {
@@ -52,8 +61,17 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleSimulationResult = (result: SimulationResult) => {
+    const log: TransactionSimulationLog = {
+      timestamp: Date.now(),
+      result: result.sucesso ? 'Simulação bem-sucedida' : 'Simulação falhou',
+      gasUsed: result.lucro?.toString() || 'Não disponível',
+      cost: result.tempoExecucao.toString(),
+      details: result.erro || 'Nenhum erro detectado'
+    };
+    setSimulationLogs(prev => [log, ...prev]);
+  };
 
-      <button onClick={simulateFlashLoanTransaction}>Simulate Flash Loan</button>
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white p-8">
       {/* Header */}
@@ -69,6 +87,48 @@ function App() {
           </div>
         </div>
       </header>
+
+      {/* Simulation Button */}
+      <div className="mb-8">
+        <button
+          onClick={async () => {
+            const result = await testSepoliaTransaction();
+            handleSimulationResult(result);
+          }}
+          className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+        >
+          Simular Transação
+        </button>
+      </div>
+
+      {/* Simulation Logs */}
+      <div className="bg-gray-800/50 rounded-lg border border-gray-700 p-6 mb-8">
+        <h2 className="text-xl font-bold mb-4">Histórico de Simulações</h2>
+        {simulationLogs.length === 0 ? (
+          <p className="text-gray-500">Nenhuma simulação realizada ainda.</p>
+        ) : (
+          <div className="space-y-2">
+            {simulationLogs.map((log, index) => (
+              <div
+                key={index}
+                className={`p-4 rounded-lg ${log.result.includes('bem-sucedida') ? 'bg-green-900/20' : 'bg-red-900/20'}`}
+              >
+                <div className="flex justify-between items-start">
+                  <span className="font-medium">{log.result}</span>
+                  <span className="text-sm text-gray-400">
+                    {new Date(log.timestamp).toLocaleTimeString()}
+                  </span>
+                </div>
+                <div className="mt-1 text-sm">
+                  <p>Gás utilizado: {log.gasUsed}</p>
+                  <p>Custo: {log.cost}ms</p>
+                  <p>Detalhes: {log.details}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
