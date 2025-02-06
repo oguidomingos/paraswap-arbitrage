@@ -1,4 +1,4 @@
-const { expect } = require('chai'); 
+const { expect } = require('chai');
 const { ethers } = require('hardhat');
 
 describe('ArbitrageSimulator', function () {
@@ -7,7 +7,7 @@ describe('ArbitrageSimulator', function () {
 
   before(async function () {
     [owner] = await ethers.getSigners();
-    
+
     const ContractFactory = await ethers.getContractFactory('ArbitrageSimulator');
     contract = await ContractFactory.deploy();
     await contract.waitForDeployment();
@@ -26,8 +26,8 @@ describe('ArbitrageSimulator', function () {
       .withArgs(
         owner.address,
         true,
-        ethers.parseUnits("99.1", 6), // Lucro esperado
-        ethers.parseUnits("0.001", 18), // Custo de gás estimado
+        ethers.parseUnits("91", 6), // Lucro esperado
+        ethers.parseUnits("1", 15), // Custo de gás estimado
         async (timestamp) => timestamp > 0
       );
   });
@@ -46,7 +46,7 @@ describe('ArbitrageSimulator', function () {
         owner.address,
         false,
         0,
-        ethers.parseUnits("0.001", 18),
+        ethers.parseUnits("1", 15),
         async (timestamp) => timestamp > 0
       );
   });

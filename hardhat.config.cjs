@@ -10,6 +10,7 @@ module.exports = {
       chainId: 31337,
       forking: {
         url: "https://polygon-rpc.com/",
+        blockNumber: 15000000  // Ajuste para um número de bloco recente e com estado disponível
       },
     },
   },
