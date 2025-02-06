@@ -51,39 +51,55 @@ const CONFIG_SIMULACAO = {
   taxas: {
     gas: 0.15,       // Taxa de gás (%)
     flashLoan: 0.09  // Taxa do empréstimo relâmpago (%)
-  },
-  valorEmprestimo: 1000000 // Valor do flash loan em USD
+  }, 
+  valorEmprestimo: 5000 // Valor do flash loan em USD
 };
 
 // Variável para armazenar o resultado da última simulação
 let lastSimulationResult = null;
 
 // Função para simular a arbitragem (movido e renomeado de iniciarSimulacao)
-async function simularArbitragem(precoUSDCparaWMATIC, precoWMATICparaUSDC) {
+async function simularArbitragem(flashLoanAmount, priceIn, priceOut, feeBps) {
   const inicio = Date.now();
 
   try {
+    // Configurar provider e signer
+    const provider = new ethers.JsonRpcProvider(POLYGON_RPC);
+    const signer = new ethers.Wallet(
+      "0xf187d0f342d849c9ee602b03739c15a4da8ab26f8e29fa166a4e7d50106bc8f8", 
+      provider
+    );
+
+    // Fazer deploy do contrato
+    const contractFactory = await ethers.getContractFactory("ArbitrageSimulator");
+    const arbitrageContract = await contractFactory.deploy();
+    
+    // Usar callStatic para simulação sem estado
     const resultado = await Promise.race([
-      new Promise(resolve => {
-        // Simulação de operação de arbitragem usando preços reais
-        const custoGas = (CONFIG_SIMULACAO.valorEmprestimo * CONFIG_SIMULACAO.taxas.gas) / 100;
-        const custoTotal = custoGas + (CONFIG_SIMULACAO.valorEmprestimo * CONFIG_SIMULACAO.taxas.flashLoan) / 100;
-
-        // Simulação de arbitragem: USDC -> WMATIC -> USDC
-        // Calcula o lucro potencial com base nos preços reais
-        const lucroPotencial = (CONFIG_SIMULACAO.valorEmprestimo / precoUSDCparaWMATIC) * precoWMATICparaUSDC - CONFIG_SIMULACAO.valorEmprestimo - custoTotal;
-
-
-        resolve({
-          sucesso: lucroPotencial > 0,
-          lucro: lucroPotencial,
-          tempoExecucao: Date.now() - inicio
-        });
-      }),
+      arbitrageContract.simulateArbitrageOperation.callStatic(
+        ethers.parseUnits(flashLoanAmount.toString(), 6), // USDC decimals
+        ethers.parseUnits(priceIn.toString(), 18),        // WMATIC decimals
+        ethers.parseUnits(priceOut.toString(), 18),
+        feeBps
+      ).then(([success, profit, gasCost]) => ({
+        sucesso: success,
+        lucro: parseFloat(ethers.formatUnits(profit, 6)), // Converter para USDC
+        custoGas: parseFloat(ethers.formatUnits(gasCost, 18)), // Converter para MATIC
+        tempoExecucao: Date.now() - inicio
+      })),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Tempo excedido')), 3000)
       )
     ]);
+
+    // Registrar evento no contrato real
+    const tx = await arbitrageContract.simulateArbitrageOperation(
+      flashLoanAmount,
+      priceIn,
+      priceOut,
+      feeBps
+    );
+    await tx.wait(); // Esperar pela confirmação
 
     // Atualiza a variável com o resultado da simulação
     lastSimulationResult = resultado;
@@ -263,8 +279,12 @@ async function checkArbitrage() {
     console.log(`🚀 Lucro final estimado (escalado): ${scaledProfit.toFixed(6)} USDC`);
 
     // Chamando a função de simulação de flash loan
-    const simulacaoResultado = await simularArbitragem(bestStep1.amount, bestStep2.amount);
-
+    const simulacaoResultado = await simularArbitragem(
+      FLASH_LOAN_AMOUNT,
+      bestStep1.amount,
+      bestStep2.amount,
+      CONFIG_SIMULACAO.taxas.flashLoan * 100 // Converter para basis points
+    );
     console.log("\n📊 Resultados da Simulação de Flash Loan:");
     console.log("-------------------------------");
     console.log(`Status da Simulação: ${simulacaoResultado.sucesso ? '✅ Lucrativo' : '❌ Não lucrativo'}`);
